@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import gym
 # import pybullet_envs
-from config import config_cartpole
+from config import config_cartpole, config_mountaincar
 import random
 from policy_optimization import PolicyGradient
 # from ppo import PPO
@@ -21,7 +21,7 @@ np.random.seed(seed)
 random.seed(seed)
 
 # get config
-config = config_cartpole(ppo=False, seed=seed)
+config = config_mountaincar(ppo=False, seed=seed)
 env = gym.make(config.env_name)
 
 # train model
@@ -29,31 +29,5 @@ env = gym.make(config.env_name)
 model = GRPO(env, config, seed)
 model.run()
 print("created model")
-
-
-
-
-
-# env = gym.make("CartPole-v1")
-
-# Evaluation
-num_episodes = 1000
-
-for episode in range(num_episodes):
-    # Reset the environment
-    state = env.reset()
-    done = False
-    total_reward = 0
-
-    while not done:
-        # randomly sample an action -- sample this from the policy
-        action = env.action_space.sample()
-
-        # take the action
-        state, reward, done, truncated, info = env.step(action)
-        total_reward += reward
-
-
-    print(f"Episode {episode + 1}: Total Reward: {total_reward}")
 
 env.close()

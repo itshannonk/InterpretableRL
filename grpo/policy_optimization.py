@@ -7,7 +7,7 @@ import os
 import logging
 from network_utils import build_mlp, np2torch
 from general import get_logger
-from policy import CategoricalPolicy
+from policy import CategoricalPolicy, GaussianPolicy
 
 class PolicyGradient(object):
     observation_dim: int
@@ -54,6 +54,13 @@ class PolicyGradient(object):
         self.env = env
         self.env.reset(seed=self.seed)
 
+        # discrete vs continuous action space
+        self.discrete = isinstance(env.action_space, gym.spaces.Discrete)
+        self.observation_dim = self.env.observation_space.shape[0]
+        self.action_dim = (
+            self.env.action_space.n if self.discrete else self.env.action_space.shape[0]
+        )
+
         self.observation_dim = self.env.observation_space.shape[0]
         self.action_dim = self.env.action_space.n
 
@@ -65,7 +72,7 @@ class PolicyGradient(object):
         Initialize the policy network
         """
         mlp = build_mlp(self.observation_dim, self.action_dim, self.config.n_layers, self.config.layer_size)
-        self.policy = CategoricalPolicy(mlp)
+        self.policy = CategoricalPolicy(mlp) if self.discrete else GaussianPolicy(mlp, self.action_dim)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=self.learning_rate)
 
     def init_averages(self):

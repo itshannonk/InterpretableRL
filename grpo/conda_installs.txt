@@ -4,3 +4,4 @@ conda install conda_forge::pytorch
 conda install conda-forge::gym
 conda install conda-forge::matplotlib
 conda install conda-forge::pybullet
+conda install conda-forge::stable-baselines3
