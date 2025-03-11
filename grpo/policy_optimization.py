@@ -55,17 +55,19 @@ class PolicyGradient(object):
         self.env.reset(seed=self.seed)
 
         # discrete vs continuous action space
+        self.discretized = config.discretized
         self.discrete = isinstance(env.action_space, gym.spaces.Discrete)
         self.observation_dim = self.env.observation_space.shape[0]
         self.action_dim = (
             self.env.action_space.n if self.discrete else self.env.action_space.shape[0]
         )
-
         self.observation_dim = self.env.observation_space.shape[0]
-        self.action_dim = self.env.action_space.n
 
         # initialize the policy network
         self.init_policy()
+
+        # initialize memory data
+        self.peak_memory_usage = []
 
     def init_policy(self):
         """

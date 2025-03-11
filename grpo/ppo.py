@@ -5,10 +5,104 @@ import numpy as np
 from network_utils import np2torch
 import torch
 from general import export_plot
+from baseline_network import BaselineNetwork
+import time
+import tracemalloc
 
 class PPO(PolicyGradient):
     def __init__(self, env: gym.Env, config: config_cartpole, seed: int, logger=None):
         super(PPO, self).__init__(env, config, seed, logger)
+        self.baseline_network = BaselineNetwork(env, config)
+        self.eps_clip = config.eps_clip
+        self.episode_durations = []
+
+    def get_returns(self, paths):
+        """
+        Calculate the returns G_t for each timestep
+
+        Args:
+            paths: recorded sample paths. See sample_path() for details.
+
+        Return:
+            returns: return G_t for each timestep
+
+        After acting in the environment, we record the observations, actions, and
+        rewards. To get the advantages that we need for the policy update, we have
+        to convert the rewards into returns, G_t, which are themselves an estimate
+        of Q^π (s_t, a_t):
+
+           G_t = r_t + γ r_{t+1} + γ^2 r_{t+2} + ... + γ^{T-t} r_T
+
+        where T is the last timestep of the episode.
+
+        Note that here we are creating a list of returns for each path
+
+        TODO: compute and return G_t for each timestep. Use self.config.gamma.
+        """
+
+        all_returns = []
+        for path in paths:
+            rewards = path["reward"]
+            #######################################################
+            #########   YOUR CODE HERE - 5-10 lines.   ############
+            returns = []
+            current_g = 0
+            for reward in rewards[::-1]:
+                current_g = reward + self.config.gamma * current_g
+                returns.append(current_g)
+            returns = np.array(returns[::-1])
+            #######################################################
+            #########          END YOUR CODE.          ############
+            all_returns.append(returns)
+        returns = np.concatenate(all_returns)
+
+        return returns
+    
+    def normalize_advantage(self, advantages):
+        """
+        Args:
+            advantages: np.array of shape [batch size]
+        Returns:
+            normalized_advantages: np.array of shape [batch size]
+
+        TODO:
+        Normalize the advantages so that they have a mean of 0 and standard
+        deviation of 1. Put the result in a variable called
+        normalized_advantages (which will be returned).
+
+        Note:
+        This function is called only if self.config.normalize_advantage is True.
+        """
+        #######################################################
+        #########   YOUR CODE HERE - 1-2 lines.    ############
+        mean, std = np.mean(advantages), np.std(advantages)
+        normalized_advantages = (advantages - mean) / std
+        #######################################################
+        #########          END YOUR CODE.          ############
+        return normalized_advantages
+    
+    def calculate_advantage(self, returns, observations):
+        """
+        Calculates the advantage for each of the observations
+        Args:
+            returns: np.array of shape [batch size]
+            observations: np.array of shape [batch size, dim(observation space)]
+        Returns:
+            advantages: np.array of shape [batch size]
+        """
+        if True:  # self.config.use_baseline:
+            # override the behavior of advantage by subtracting baseline
+            advantages = self.baseline_network.calculate_advantage(
+                returns, observations
+            )
+        else:
+            advantages = returns
+
+        if True:  # self.config.normalize_advantage:
+            advantages = self.normalize_advantage(advantages)
+
+        return advantages
+    
 
     def update_policy(self, observations: np.array, actions: np.array, advantages: np.array, old_logprobs: np.array):
         """        
@@ -55,6 +149,10 @@ class PPO(PolicyGradient):
         averaged_total_rewards = []  # the returns for each iteration
 
         for t in range(self.config.num_batches):
+            # start timer and memory tracking
+            start_time = time.perf_counter()
+            if self.config.trace_memory:
+                tracemalloc.start()
 
             # collect a minibatch of samples
             paths, total_rewards = self.sample_path(self.env)
@@ -73,6 +171,14 @@ class PPO(PolicyGradient):
                 self.baseline_network.update_baseline(returns, observations)
                 self.update_policy(observations, actions, advantages, 
                                    old_logprobs)
+
+            # end timer and memory tracking
+            end_time = time.perf_counter()
+            self.episode_durations.append(end_time - start_time)
+            if self.config.trace_memory:
+                _, peak = tracemalloc.get_traced_memory()
+                tracemalloc.stop()
+                self.peak_memory_usage.append(peak / 10**6)  # convert to MB
 
             # logging
             if t % self.config.summary_freq == 0:
@@ -94,13 +200,39 @@ class PPO(PolicyGradient):
                 # self.record()
 
         self.logger.info("- Training done.")
+        msg = "[FINAL] Average duration: {:04.2f}s".format(np.mean(self.episode_durations))
+        self.logger.info(msg)
+        if self.config.trace_memory:
+            msg = "[FINAL] Average peak memory usage: {:04.2f}MB".format(np.mean(self.peak_memory_usage))
+            self.logger.info(msg)
+
+        # Save the resulting policy and the training statistics
+        torch.save(self.policy.state_dict(), self.config.output_path + "/policy.pth")
         np.save(self.config.scores_output, averaged_total_rewards)
+        np.save(self.config.duration_output, self.episode_durations)
+        if self.config.trace_memory:
+            np.save(self.config.memory_output, self.peak_memory_usage)
+
+        # Plot the training stats
         export_plot(
             averaged_total_rewards,
             "Score",
             self.config.env_name,
             self.config.plot_output,
         )
+        export_plot(
+            self.episode_durations,
+            "Episode durations (s)",
+            self.config.env_name,
+            self.config.record_path + "durations.png",
+        )
+        if self.config.trace_memory:
+            export_plot(
+                self.peak_memory_usage,
+                "Peak memory usage (MB)",
+                self.config.env_name,
+                self.config.memory_plot,
+            )
 
     def sample_path(self, env, num_episodes=None):
         """
@@ -129,7 +261,7 @@ class PPO(PolicyGradient):
         t = 0
 
         while num_episodes or t < self.config.batch_size:
-            state = env.reset()
+            state = env.reset()  # [0]
             states, actions, old_logprobs, rewards = [], [], [], []
             episode_reward = 0
 
@@ -140,7 +272,13 @@ class PPO(PolicyGradient):
                 action, old_logprob = self.policy.act(states[-1][None], return_log_prob = True)
                 assert old_logprob.shape == (1,)
                 action, old_logprob = action[0], old_logprob[0]
-                state, reward, done, info = env.step(action)
+
+                env_action = action
+                # map the discrete action to the environment's original continuous action space
+                if self.discretized:
+                    env_action = env.action(env_action)
+
+                state, reward, done, info = env.step(action)  # might need to unpack 5?
                 actions.append(action)
                 old_logprobs.append(old_logprob)
                 rewards.append(reward)

@@ -6,7 +6,10 @@ from network_utils import np2torch
 import torch
 from general import export_plot
 import copy
+import time
+import tracemalloc
 
+# THIS DUPLICATE FUNCTION WILL DEPEND ON THE ENVIRONMENT
 def duplicate_env(env: gym.Env, num_envs: int, seed: int) -> list:
     """
     Duplicate the environment num_envs times.
@@ -29,6 +32,7 @@ class GRPO(PolicyGradient):
         super(GRPO, self).__init__(env, config, seed, logger)
         self.group_size = config.group_size
         self.eps_clip = config.eps_clip
+        self.episode_durations = []
 
     def normalize_group_rewards(self, rewards: list) -> list:
         """
@@ -104,6 +108,10 @@ class GRPO(PolicyGradient):
         averaged_total_rewards = []  # the returns for each iteration
 
         for t in range(self.config.num_batches):
+            # start timer and memory tracking
+            if self.config.trace_memory:
+                tracemalloc.start()
+            start_time = time.perf_counter()
 
             # collect a minibatch of samples
             paths, total_rewards, norm_advantages = self.sample_path(self.env)
@@ -118,6 +126,14 @@ class GRPO(PolicyGradient):
             for k in range(self.config.update_freq):
                 self.update_policy(observations, actions, advantages, 
                                    old_logprobs)
+                
+            # end timer and memory tracking
+            end_time = time.perf_counter()
+            self.episode_durations.append(end_time - start_time)
+            if self.config.trace_memory:
+                _, peak = tracemalloc.get_traced_memory()
+                tracemalloc.stop()
+                self.peak_memory_usage.append(peak / 10**6)  # convert to MB
 
             # logging
             if t % self.config.summary_freq == 0:
@@ -139,14 +155,39 @@ class GRPO(PolicyGradient):
                 # self.record()
 
         self.logger.info("- Training done.")
-        torch.save(self.policy.state_dict(), self.config.model_output + "/policy.pth")
+        msg = "[FINAL] Average duration: {:04.2f}s".format(np.mean(self.episode_durations))
+        self.logger.info(msg)
+        if self.config.trace_memory:
+            msg = "[FINAL] Average peak memory usage: {:04.2f}MB".format(np.mean(self.peak_memory_usage))
+            self.logger.info(msg)
+
+        # Save the resulting policy and the training statistics
+        torch.save(self.policy.state_dict(), self.config.model_output)
         np.save(self.config.scores_output, averaged_total_rewards)
+        np.save(self.config.duration_output, self.episode_durations)
+        if self.config.trace_memory:
+            np.save(self.config.memory_output, self.peak_memory_usage)
+
+        # Plot the training stats
         export_plot(
             averaged_total_rewards,
             "Score",
             self.config.env_name,
             self.config.plot_output,
         )
+        export_plot(
+            self.episode_durations,
+            "Episode durations (s)",
+            self.config.env_name,
+            self.config.plot_duration,
+        )
+        if self.config.trace_memory:
+            export_plot(
+                self.peak_memory_usage,
+                "Peak memory usage (MB)",
+                self.config.env_name,
+                self.config.memory_plot,
+            )
     
     def sample_path(self, env: gym.Env, num_episodes=None):
         """
@@ -178,10 +219,11 @@ class GRPO(PolicyGradient):
         # * self.group_size?
         while num_episodes or t < self.config.batch_size:
             # sample a start state and duplicate it to perform multiple runs
-            state = env.reset()[0]
+            state = env.reset()  # [0]
             envs = duplicate_env(env, self.group_size, self.seed)
             group_paths = []
             group_rewards = []
+            g = 0
             
             # loop through envs to collect sample paths starting from the same start state
             for _env in envs:
@@ -195,7 +237,13 @@ class GRPO(PolicyGradient):
                     action, old_logprob = self.policy.act(states[-1][None], return_log_prob = True)
                     assert old_logprob.shape == (1,)
                     action, old_logprob = action[0], old_logprob[0]
-                    state, reward, done, info, _ = _env.step(action)
+
+                    env_action = action
+                    # map the discrete action to the environment's original continuous action space
+                    if self.discretized:
+                        env_action = env.action(env_action)
+
+                    state, reward, done, info = _env.step(env_action)  # sometimes expects 4, sometimes 5?
                     actions.append(action)
                     old_logprobs.append(old_logprob)
                     rewards.append(reward)
@@ -204,7 +252,7 @@ class GRPO(PolicyGradient):
                     if done or step == self.config.max_ep_len - 1:
                         group_rewards.append(episode_reward)
                         break
-                    if (not num_episodes) and t == self.config.batch_size:
+                    if (not num_episodes) and t == self.config.batch_size and g == self.group_size - 1:
                         # the episode ended early, but record the reward anyway
                         group_rewards.append(episode_reward)
                         break
@@ -216,6 +264,7 @@ class GRPO(PolicyGradient):
                     "old_logprobs": np.array(old_logprobs)
                 }
                 group_paths.append(path)
+                g += 1
             
             paths.append(group_paths)
             
