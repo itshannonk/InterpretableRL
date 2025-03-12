@@ -33,14 +33,16 @@ class PendulumDiscreteActionWrapper(gym.ActionWrapper):
 class HumanoidDiscreteActionWrapper(gym.ActionWrapper):
     """
     A wrapper for the Humanoid environment to convert continuous actions to discrete actions.
-    The action space is 17 dimensional, and each dimension can take 3 values:
+    The action space is 17 dimensional, and each dimension can take 5 values:
         0: -0.4 (apply negative torque)
-        1: 0.0  (apply no torque)
-        2: 0.4  (apply positive torque)
+        1: -0.2 (apply less negative torque)
+        2: 0.0  (apply no torque)
+        3: 0.2  (apply less positive torque)
+        4: 0.4  (apply positive torque)
     """
     def __init__(self, env):
         super().__init__(env)
-        self.n_bins_per_dim = 3
+        self.n_bins_per_dim = 5
         self.action_space = gym.spaces.MultiDiscrete([self.n_bins_per_dim] * 17)
 
     def action(self, action):
@@ -48,14 +50,19 @@ class HumanoidDiscreteActionWrapper(gym.ActionWrapper):
         Convert the discrete action into a continuous action.
         """
         continuous_action = np.zeros(HUMANOID_ACTION_DIM)
-        for dim in action:
-            if dim == 0:
+        for dim, act in enumerate(action):
+            if act == 0:
                 continuous_action[dim] = -0.4
-            elif dim == 1:
+            elif act == 1:
+                continuous_action[dim] = -0.2
+            elif act == 2:
                 continuous_action[dim] = 0.0
-            elif dim == 2:
+            elif act == 3:
+                continuous_action[dim] = 0.2
+            elif act == 4:
                 continuous_action[dim] = 0.4
         return continuous_action
+
         
 class config:
     env_name: str               # name of the environment
@@ -143,7 +150,7 @@ class config_cheetah(config):
 class config_humanoid(config):
     def __init__(self, grpo: bool, seed: int, trace_memory: bool):
         super().__init__(grpo, "Humanoid-v3", seed, trace_memory)
-        self.discretized = False
+        self.discretized = True
         self.max_ep_len = 1000
 
 def setup_env(env_name: str, grpo: bool, seed: int, trace_memory: bool) -> tuple:
