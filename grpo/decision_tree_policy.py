@@ -1,6 +1,7 @@
 import numpy as np
 import gym
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.preprocessing import KBinsDiscretizer
 import joblib
 import torch
 import torch.nn as nn
@@ -50,7 +51,7 @@ def generate_dataset(env, policy, episodes: int = 1000, max_ep_len: int = 200):
             rewards.append(reward)
         return np.array(observations), np.array(actions), sum(rewards) / len(rewards)
 
-def train_decision_tree(observations: np.array, actions: np.array, seed: int, max_depth: int = 5) -> DecisionTreeClassifier:
+def train_decision_tree(observations: np.array, actions: np.array, seed: int, max_depth: int = 5, discretize_actions: bool = False, num_bins: int = 10) -> DecisionTreeClassifier:
     """
     Train a decision tree model on the given observations and actions.
     
@@ -61,7 +62,20 @@ def train_decision_tree(observations: np.array, actions: np.array, seed: int, ma
     Returns:
         model: The trained decision tree model.
     """
-    return DecisionTreeClassifier(random_state=seed, max_depth=max_depth).fit(observations, actions)
+    if discretize_actions:
+        print("Discretizing the actions..")
+        discretizer = KBinsDiscretizer(n_bins=num_bins, encode='ordinal', strategy='uniform')
+        discretized_actions = discretizer.fit_transform(actions)
+    
+        # Ensure the shape of discretized actions matches the number of observations
+        discretized_actions = discretized_actions.reshape(-1, actions.shape[1])
+        
+        decision_tree = DecisionTreeClassifier(random_state=seed, max_depth=max_depth)
+        decision_tree.fit(observations, discretized_actions)
+        
+        return decision_tree
+    else:
+        return DecisionTreeClassifier(random_state=seed, max_depth=max_depth).fit(observations, actions)
 
 def evaluate_decision_tree(env, model: DecisionTreeClassifier, episodes: int, max_ep_length: int) -> float:
     """
@@ -132,9 +146,9 @@ if __name__ == "__main__":
     # - number of episodes to generate
     # - maximum episode length
     # - decision tree depth
-    env_name = "CartPole-v1"
+    env_name = "Humanoid-v3"
     seed = 3
-    model_dir = "results/CartPole-v1-grpo-seed=5-mod-03/"
+    model_dir = "results/Humanoid-v3-grpo-seed=1/"
     num_episodes = 1000
     max_ep_len = 500
     # depth = 5
@@ -155,7 +169,7 @@ if __name__ == "__main__":
     action_dim = env.action_space.n if discrete else env.action_space.shape[0]
     observation_dim = env.observation_space.shape[0]
 
-    input_size, size, output_size, n_layers = observation_dim, 64, action_dim, 1
+    input_size, size, output_size, n_layers = observation_dim, 64, action_dim, 2
     layers = []
     layers.extend([nn.Linear(input_size, size), nn.ReLU()])
     layers.extend([nn.Linear(size, size), nn.ReLU()] * (n_layers - 1))
@@ -166,12 +180,12 @@ if __name__ == "__main__":
     state_dict = torch.load(model_dir + "policy.pth")
     # remove the 'network.' prefix from the keys
     state_dict = {k.replace("network.", ""): v for k, v in state_dict.items()}
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=False)
     model.eval()
 
     # Create the policy
     discrete = isinstance(env.action_space, gym.spaces.Discrete)
-    policy = CategoricalPolicy(model) if discrete else GaussianPolicy(model)
+    policy = CategoricalPolicy(model) if discrete else GaussianPolicy(model, action_dim)
 
     # Generate a dataset from the policy network
     print("Generating dataset...")
@@ -185,7 +199,7 @@ if __name__ == "__main__":
         depth = i
         # Train a decision tree using the policy network dataset
         print(f"Training decision tree with depth {depth}...")
-        decision_tree_model = train_decision_tree(observations, actions, seed, depth)
+        decision_tree_model = train_decision_tree(observations, actions, seed, depth, discretize_actions=env_name == "Humanoid-v3")
 
         # Evaluate the decision tree policy
         print("Done.\nEvaluating decision tree...")

@@ -86,7 +86,7 @@ class config:
     learning_rate: int = 3e-2   # learning rate for the policy network
 
     # parameters for the policy network
-    n_layers: int = 1           # number of layers in the policy network
+    n_layers: int = 2           # number of layers in the policy network
     layer_size: int = 64        # size of each layer in the policy network
 
     # hyperparameters GRPO and PPO
@@ -150,7 +150,7 @@ class config_cheetah(config):
 class config_humanoid(config):
     def __init__(self, grpo: bool, seed: int, trace_memory: bool):
         super().__init__(grpo, "Humanoid-v3", seed, trace_memory)
-        self.discretized = True
+        self.discretized = False
         self.max_ep_len = 1000
 
 def setup_env(env_name: str, grpo: bool, seed: int, trace_memory: bool) -> tuple:
@@ -175,13 +175,16 @@ def setup_env(env_name: str, grpo: bool, seed: int, trace_memory: bool) -> tuple
         raise ValueError("Unknown environment name: {}".format(env_name))
 
     # create the environment
-    env = gym.make(env_name)
+    if "Humanoid" in env_name:
+        env = gym.make(env_name, terminate_when_unhealthy=False)
+    else:
+        env = gym.make(env_name)
     env.seed(seed)
 
     # descretize the action space if needed
     if env_name == "Pendulum-v1":
         env = PendulumDiscreteActionWrapper(env)
-    else:
-        env = HumanoidDiscreteActionWrapper(env)
+    # elif "Humanoid" in env_name:
+    #     env = HumanoidDiscreteActionWrapper(env)
 
     return config, env
