@@ -97,6 +97,12 @@ class GRPO(PolicyGradient):
         clipped = torch.clamp(prob_ratio, 1 - self.eps_clip, 1 + self.eps_clip)
         loss = -torch.min(prob_ratio * advantages, clipped * advantages).mean()
 
+        # Add KL divergence penalty
+        kl_divergence = torch.nn.functional.kl_div(
+            new_logprobs, old_logprobs, reduction='batchmean'
+        )
+        loss -= kl_divergence * self.config.kl_weight
+
         # optimize
         self.optimizer.zero_grad()
         loss.backward()

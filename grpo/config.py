@@ -88,6 +88,7 @@ class config:
 
     # hyperparameters for GRPO
     group_size: int = 10        # number of sample paths in each group
+    kl_weight: float = 0.03     # weight for KL penalty
 
     # hyperparameters for PPO
     gamma: float = 0.99         # discount factor for future rewards
