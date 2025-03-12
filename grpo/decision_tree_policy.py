@@ -134,9 +134,9 @@ if __name__ == "__main__":
     # - decision tree depth
     env_name = "CartPole-v1"
     seed = 3
-    model_dir = "results/CartPole-v1-grpo-seed=3/"
-    num_episodes = 500
-    max_ep_len = 200
+    model_dir = "results/CartPole-v1-grpo-seed=5-mod-03/"
+    num_episodes = 1000
+    max_ep_len = 500
     # depth = 5
 
     if env_name == "Pendulum-v1":
@@ -175,8 +175,8 @@ if __name__ == "__main__":
 
     # Generate a dataset from the policy network
     print("Generating dataset...")
-    observations, actions, average_reward = generate_dataset(env, policy, num_episodes, max_ep_len)
-    print(f"Done.\nAverage reward for policy network model: {average_reward}")
+    observations, actions, average_nn_reward = generate_dataset(env, policy, num_episodes, max_ep_len)
+    print(f"Done.\nAverage reward for policy network model: {average_nn_reward}")
 
     # Run the experiment for multiple decision tree depths
     max_depth_power = 7  # 2^7 = 128 leaves
@@ -202,7 +202,7 @@ if __name__ == "__main__":
     # Plot the decision tree rewards for the powers of 2 and show the average reward for the
     # neural net model as a baseline
     print("Plotting results...")
-    plot_rewards(average_rewards, list(range(1, max_depth_power + 1)), average_reward, env_name,
+    plot_rewards(average_rewards, list(range(1, max_depth_power + 1)), average_nn_reward, env_name,
                   model_dir + "decision_tree_rewards.png")
     
     # Save the list of average rewards for this seed
