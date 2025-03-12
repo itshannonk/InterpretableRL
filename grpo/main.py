@@ -14,7 +14,7 @@ from ppo import PPO
 # import logging
 # logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
 
-env_name = 'HumanoidStandup-v2'
+env_name = 'Humanoid-v3'
 seeds = range(1, 2)
 
 for seed in seeds:

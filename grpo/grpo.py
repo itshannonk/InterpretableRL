@@ -10,18 +10,28 @@ import time
 import tracemalloc
 
 # THIS DUPLICATE FUNCTION WILL DEPEND ON THE ENVIRONMENT
-def duplicate_env(env: gym.Env, num_envs: int, seed: int) -> list:
+def duplicate_env(env: gym.Env, env_name: str, num_envs: int, seed: int) -> list:
     """
     Duplicate the environment num_envs times.
     """
     envs = []
     for _ in range(num_envs):
-        # Create en environment with the same specifications as the original env
-        new_env = gym.make(env.spec.id)
-        new_env.reset(seed=seed)
-        # Set the state to the same as the current env
-        new_env.env.state = copy.deepcopy(env.env.state)
-        envs.append(new_env)
+        if "Humanoid" in env_name:
+            # Create an environment with the same specifications as the original env
+            new_env = gym.make(env.spec.id)
+            new_env.seed(seed)
+            new_env.reset()
+
+            # Set the state to the same as the current env
+            new_env.sim.set_state(copy.deepcopy(env.sim.get_state()))
+            envs.append(new_env)
+        else:
+            # Create en environment with the same specifications as the original env
+            new_env = gym.make(env.spec.id)
+            new_env.reset(seed=seed)
+            # Set the state to the same as the current env
+            new_env.env.state = copy.deepcopy(env.env.state)
+            envs.append(new_env)
 
     return envs
 
@@ -220,7 +230,7 @@ class GRPO(PolicyGradient):
         while num_episodes or t < self.config.batch_size:
             # sample a start state and duplicate it to perform multiple runs
             state = env.reset()  # [0]
-            envs = duplicate_env(env, self.group_size, self.seed)
+            envs = duplicate_env(env, self.config.env_name, self.group_size, self.seed)
             group_paths = []
             group_rewards = []
             g = 0

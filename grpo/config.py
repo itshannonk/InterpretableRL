@@ -141,7 +141,7 @@ class config_cheetah(config):
 
 class config_humanoid(config):
     def __init__(self, grpo: bool, seed: int, trace_memory: bool):
-        super().__init__(grpo, "HumanoidStandup-v2", seed, trace_memory)
+        super().__init__(grpo, "Humanoid-v3", seed, trace_memory)
         self.discretized = False
         self.max_ep_len = 1000
 
@@ -161,7 +161,7 @@ def setup_env(env_name: str, grpo: bool, seed: int, trace_memory: bool) -> tuple
         config = config_pendulum(grpo, seed, trace_memory)
     elif env_name == "HalfCheetahBulletEnv-v0":
         config = config_cheetah(grpo, seed, trace_memory)
-    elif env_name == "HumanoidStandup-v2":
+    elif env_name == "Humanoid-v3":
         config = config_humanoid(grpo, seed, trace_memory)
     else:
         raise ValueError("Unknown environment name: {}".format(env_name))
@@ -173,5 +173,7 @@ def setup_env(env_name: str, grpo: bool, seed: int, trace_memory: bool) -> tuple
     # descretize the action space if needed
     if env_name == "Pendulum-v1":
         env = PendulumDiscreteActionWrapper(env)
+    else:
+        env = HumanoidDiscreteActionWrapper(env)
 
     return config, env
