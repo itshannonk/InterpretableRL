@@ -51,7 +51,7 @@ def generate_dataset(env, policy, episodes: int = 1000, max_ep_len: int = 200):
             rewards.append(reward)
         return np.array(observations), np.array(actions), sum(rewards) / len(rewards)
 
-def train_decision_tree(observations: np.array, actions: np.array, seed: int, max_depth: int = 5, discretize_actions: bool = False, num_bins: int = 10) -> DecisionTreeClassifier:
+def train_decision_tree(observations: np.array, actions: np.array, seed: int, max_depth: int = 5, discretize_actions: bool = False, num_bins: int = 1000) -> DecisionTreeClassifier:
     """
     Train a decision tree model on the given observations and actions.
     

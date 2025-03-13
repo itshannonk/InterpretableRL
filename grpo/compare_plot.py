@@ -33,7 +33,7 @@ def plot(data_file_list: list, xlabel: str, ylabel: str, title: str, save_filena
     plt.savefig(save_filename)
     plt.close()
 
-def plot_multiple_seeds(file_directories: list, xlabel: str, ylabel: str, title: str, save_filename: str, add_average: bool = False):
+def plot_multiple_seeds(file_directories: list, filename: str, xlabel: str, ylabel: str, title: str, save_filename: str, add_average: bool = False):
     """
     Plot the data from the given directories.
 
@@ -49,7 +49,7 @@ def plot_multiple_seeds(file_directories: list, xlabel: str, ylabel: str, title:
         algorithm_name = "GRPO" if "grpo" in directory else "PPO"
         results = []
         for seed in range(1, 7):  # we used seeds 1 - 6
-            results.append(np.load(f"{directory}{seed}/scores.npy"))
+            results.append(np.load(f"{directory}{seed}/{filename}"))
         plt.plot(np.mean(results, axis=0), label=algorithm_name)
         plt.fill_between(range(len(results[0])), np.min(results, axis=0), np.max(results, axis=0), alpha=0.2)
 
@@ -77,15 +77,15 @@ if __name__ == "__main__":
 
 
     # # Example usage
-    # filenames = [
-    #     "results/CartPole-v1-grpo-seed=3/memory.npy",
-    #     "results/CartPole-v1-ppo-seed=3/memory.npy"
-    # ]
-    # # plot(filenames,
-    # #      "Training Episode",
-    # #      "Average Reward",
-    # #      "Average Reward vs Training Episode",
-    # #      "results/grpo-ppo-comparison-cartpole.png")
+    filenames = [
+        "results/Humanoid-v3-grpo-seed=1/scores.npy",
+        "results/Humanoid-v3-ppo-seed=1/scores.npy"
+    ]
+    plot(filenames,
+         "Training Episode",
+         "Average Reward",
+         "Average Reward vs Training Episode",
+         "results/grpo-ppo-comparison-cartpole.png")
 
     # plot(filenames,
     #      "Training Episode",
@@ -103,20 +103,22 @@ if __name__ == "__main__":
 
     # Example usage
     directories = [
-        "results/CartPole-v1-grpo-seed=",
-        "results/CartPole-v1-ppo-seed="
+        "results/Humanoid-v3-grpo-seed=",
+        "results/Humanoid-v3-ppo-seed="
     ]
 
     plot_multiple_seeds(directories,
+         "scores.npy",
          "Training Episode",
          "Average Reward",
          "Average Reward vs Training Episode",
-         "results/combined-grpo-ppo-reward-comparison-cartpole.png",
+         "results/combined-grpo-ppo-reward-comparison-humanoid.png",
          add_average=False)
 
-    # plot_multiple_seeds(directories,
-    #      "Training Episode",
-    #      "Peak Memory Usage (MB)",
-    #      "Peak Memory Usage vs Training Episode",
-    #      "results/combined-grpo-ppo-memory-comparison-cartpole.png",
-    #      add_average=True)
+    plot_multiple_seeds(directories,
+         "memory.npy",
+         "Training Episode",
+         "Peak Memory Usage (MB)",
+         "Peak Memory Usage vs Training Episode",
+         "results/combined-grpo-ppo-memory-comparison-humanoid.png",
+         add_average=True)
