@@ -4,6 +4,8 @@ from .gymnax_wrapper import GymnaxToGymnasiumWrapper, GymnaxToVectorGymnasiumWra
 
 import gymnasium
 
+import jax.numpy as jnp
+from gym import spaces
 
 class Leaf:
     def __init__(self, value, prune=False):
@@ -21,6 +23,84 @@ class Node:
         self.id = None
 
 
+class ReacherDiscreteActionWrapper:
+    def __init__(self, env, num_bins):
+        """
+        Wrapper for the Reacher env.
+
+        Args:
+            env: The original environment (Reacher).
+            num_bins: The number of discrete bins for each continuous action dimension.
+        """
+        self.env = env
+        self.num_bins = num_bins
+
+        low, high = self.env.action_space().low, self.env.action_space().high
+        # Create num_bins evenly spaced values between lower and upper bounds of i-th action in the action space
+        # in order to bin the range into discrete intervals
+        self.action_bins = [
+            jnp.linspace(low[i], high[i], num_bins) for i in range(self.env.num_actions)
+        ]
+        self.action_space = spaces.MultiDiscrete([num_bins] * self.env.num_actions)
+        self.observation_space = self.env.observation_space(self.env.default_params)
+
+    def action(self, action):
+        """
+        Convert a discrete action index to a continuous action.
+        """
+        # action might be a scalar so convert it into an array
+        action = jnp.atleast_1d(action)
+        return jnp.array([
+            jnp.take(self.action_bins[i], jnp.array(action[i], int)) for i in range(action.shape[0])
+        ])
+    
+    def step(self, key, state, action, params):
+        """
+        Takes a step in the environment using a discretized action.
+
+        Args:
+            key: PRNG key for randomness.
+            state: Current environment state.
+            action: Discrete action indices.
+            params: Environment parameters.
+
+        Returns:
+            Next observation, next state, reward, done flag, and additional info.
+        """
+        continuous_action = self.action(action)
+        return self.env.step_env(key, state, continuous_action, params)
+
+
+    def reset(self, *args, **kwargs):
+        """
+        Resets the environment with flexible arguments.
+        """
+        if len(args) == 0: # if no args, then use defaults
+            key = jax.random.PRNGKey(0)
+            params = self.env.default_params
+        elif len(args) == 2:
+            key, params = args
+        else:
+            raise ValueError("Invalid number of arguments for reset method")
+        
+        return self.env.reset_env(key, params)
+
+
+    def render(self, mode="human"):
+        return self.env.render(mode)
+
+    def close(self):
+        self.env.close()
+
+    @property
+    def num_actions(self):
+        return self.num_bins
+
+    @property
+    def default_params(self):
+        return self.env.default_params
+
+
 def make_env_from_name(
     env_name, seed=None, return_gym_env=False, return_gym_vec_env=False, num_envs_vec=1
 ):
@@ -30,6 +110,9 @@ def make_env_from_name(
     """
     if env_name in gymnax.registered_envs:
         env, env_params = gymnax.make(env_name)
+
+        if env_name == "Reacher-misc":
+            env = ReacherDiscreteActionWrapper(env, num_bins=1000)
     else:
         if env_name == "CartPoleSwingup":
             from .environments.cartpoleswingup import CartPoleSwingUp
