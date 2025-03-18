@@ -3,8 +3,6 @@ In this project, we compared three methods of creating decision tree policies fo
 
 Our implementations of GRPO and PPO can be found in `grpo/` dir. The DTPO implementation can be found in `dtpo/` dir, and is based on the original, open-source implementation: https://github.com/tudelft-cda-lab/DTPO/tree/main.
 
-TODO: GRPO and PPO
-
 ## DTPO
 To install dependencies, run
 ```
@@ -23,4 +21,12 @@ python run_dtpo.py --env-name PendulumBangBang --output-dir out --seed 2 --use-r
 3. Using different max tree depth than the default (which is 4)
 ```
 python run_dtpo.py --env-name CartPole-v1 --output-dir out --seed 1 --max-depth 5
+```
+
+## GRPO and PPO
+The PPO and GRPO algorithms use Python 3.10.
+
+To install dependencies, run
+```
+pip install -r dtpo/requirements.txt
 ```

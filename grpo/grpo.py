@@ -16,7 +16,7 @@ def duplicate_env(env: gym.Env, env_name: str, num_envs: int, seed: int) -> list
     """
     envs = []
     for _ in range(num_envs):
-        if "Humanoid" in env_name:
+        if "Humanoid" in env_name or "Reacher" in env_name:
             # Create an environment with the same specifications as the original env
             new_env = gym.make(env.spec.id)
             new_env.seed(seed)

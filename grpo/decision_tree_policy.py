@@ -138,7 +138,7 @@ def plot_rewards(rewards: list, depths: list, neural_net_reward: float, env_name
     plt.close()
 
 if __name__ == "__main__":
-    # TODO: this file should accept parameters
+    # Eventually, this file should accept parameters
     # - env_name
     # - seed
     # - path to model directory (we'll load the model and save the decision tree here)

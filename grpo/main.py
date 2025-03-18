@@ -1,21 +1,17 @@
-# from ppo import PPO
-# from grpo import GRPO
-# import argparse
+"""
+Train and run the GRPO and PPO algorithms on your desired environment (defined in config.py).
+"""
 import numpy as np
 import torch
-# import pybullet_envs
 from config import setup_env
 import random
 from policy_optimization import PolicyGradient
-# from ppo import PPO
 from grpo import GRPO
 from ppo import PPO
 
-# import logging
-# logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
-
-env_name = 'Humanoid-v3'
-seeds = range(1, 2)
+# Replace 'Reacher-v5' with your desired environment
+env_name = 'Reacher-v5'
+seeds = range(1, 4)
 
 for seed in seeds:
     torch.random.manual_seed(seed)
@@ -33,26 +29,3 @@ for seed in seeds:
     model = PPO(env, config, seed)
     model.run()
     env.close()
-
-
-
-
-
-# # Set up the policy
-# seed = 6
-# torch.random.manual_seed(seed)
-# np.random.seed(seed)
-# random.seed(seed)
-
-# config, env = setup_env("CartPole-v1", grpo=False, seed=seed, trace_memory=True)
-# # # get config
-# # config = config_cartpole(grpo=True, seed=seed)
-# # env = gym.make(config.env_name)
-
-# # train model
-# # model = PolicyGradient(env, config, seed)
-# model = PPO(env, config, seed)
-# model.run()
-# print("created model")
-
-# env.close()
