@@ -75,7 +75,7 @@ parser.add_argument(
     help="learning rate for gradient updates",
 )
 parser.add_argument(
-    "--gamma", type=float, default=0.99, help="discount value for future rewards"
+    "--gamma", type=float, default=1.0, help="discount value for future rewards"
 )
 parser.add_argument(
     "--normalize-advantage",
@@ -128,6 +128,24 @@ parser.add_argument(
     default="out",
     help="the directory to output result files into",
 )
+parser.add_argument(
+    "--use-same-tree",
+    type=lambda x: bool(strtobool(x)),
+    default=False,
+    help="whether to only learn / refit the same tree during training",
+)
+parser.add_argument(
+    "--use-replay-buffer",
+    type=lambda x: bool(strtobool(x)),
+    default=False,
+    help="whether to use replay buffer or not",
+)
+parser.add_argument(
+    "--replay-buffer-capacity",
+    type=int,
+    default=7500000,
+    help="number of iterations used for only updating the value function",
+)
 
 args = parser.parse_args()
 
@@ -173,9 +191,13 @@ model = DTPOLearner(
     use_linear_value_function=args.use_linear_value_function,
     verbose=args.verbose,
     random_state=args.seed,
+    use_same_tree=args.use_same_tree,
+    use_replay_buffer=args.use_replay_buffer,
+    replay_buffer_capacity=args.replay_buffer_capacity
 )
 model.learn()
 runtime = time.time() - start_time
+print("runtime: ", runtime)
 
 sns.set_theme(context="talk", style="whitegrid", palette="colorblind")
 
@@ -184,7 +206,7 @@ iterations = np.arange(len(model.iteration_policy_entropy_)) * args.simulation_s
 # sns.lineplot(x=iterations, y=model.mean_discounted_returns_)
 plt.plot(iterations, model.mean_discounted_returns_)
 plt.xlabel("iteration")
-plt.ylabel("mean discounted return")
+plt.ylabel("mean return")
 plt.tight_layout()
 
 returns_indicated = np.array(model.mean_discounted_returns_)[
@@ -200,12 +222,12 @@ plt.scatter(
     color=sns.color_palette()[1],
 )
 print(model.iterations_discretized_, model.mean_discretized_discounted_returns_)
-plt.plot(
-    iterations[model.iterations_discretized_],
-    model.mean_discretized_discounted_returns_,
-    linestyle="--",
-    color=sns.color_palette()[2],
-)
+# plt.plot(
+#     iterations[model.iterations_discretized_],
+#     model.mean_discretized_discounted_returns_,
+#     linestyle="--",
+#     color=sns.color_palette()[2],
+# )
 
 filename = f"{experiment_dir}/return_per_episode"
 plt.savefig(filename + ".png")
@@ -328,7 +350,7 @@ print("=" * 50)
 
 returns = []
 discounted_returns = []
-if isinstance(env, gymnax.environments.environment.Environment):
+if isinstance(env, gymnax.environments.environment.Environment) or "Reacher" in args.env_name:
     for repetition in tqdm(range(args.evaluation_rollouts)):
         rng, rng_reset = jax.random.split(rng)
         obs, env_state = env.reset(rng_reset, env_params)
@@ -399,3 +421,11 @@ with open(filename, "w") as file:
         file,
         indent=4,
     )
+
+model.save_tree_policy(f"{experiment_dir}/tree_policy.pkl")
+
+# Save returns to a JSON file
+with open(f"{experiment_dir}/returns.json", "w") as file:
+    json.dump({"returns": returns}, file, indent=4)
+
+print(f"Returns saved")
