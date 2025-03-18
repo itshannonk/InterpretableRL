@@ -1,7 +1,15 @@
 import gym
 import numpy as np
 
+CARTPOLE = "CartPole-v1"
+PENDULUM = "Pendulum-v1"
+MOUNTAINCAR = "MountainCar-v0"
+CHEETAH = "HalfCheetahBulletEnv-v4"
+HUMANOID = "Humanoid-v3"
+SWIMMER = "Swimmer-v5"
+REACHER = "Reacher-v5"
 HUMANOID_ACTION_DIM = 17
+REACHER_ACTION_DIM = 2
 
 class PendulumDiscreteActionWrapper(gym.ActionWrapper):
     """
@@ -61,6 +69,28 @@ class HumanoidDiscreteActionWrapper(gym.ActionWrapper):
                 continuous_action[dim] = 0.2
             elif act == 4:
                 continuous_action[dim] = 0.4
+        return continuous_action
+
+class ReacherDiscreteActionWrapper(gym.ActionWrapper):
+    """
+    A wrapper for the Reacher environment to convert continuous actions to discrete actions.
+    We will evenly partition each dimension of the action space into 10 bins.
+    """
+    def __init__(self, env):
+        super().__init__(env)
+        self.n_bins_per_dim = 10
+        self.action_space = gym.spaces.MultiDiscrete([self.n_bins_per_dim] * REACHER_ACTION_DIM)
+        self.max_action = env.action_space.high[0]
+        self.min_action = env.action_space.low[0]
+        self.bin_size = (self.max_action - self.min_action) / self.n_bins_per_dim
+
+    def action(self, action):
+        """
+        Convert the discrete action into a continuous action.
+        """
+        continuous_action = np.zeros(REACHER_ACTION_DIM)
+        for dim, act in enumerate(action):
+            continuous_action[dim] = self.min_action + act * self.bin_size
         return continuous_action
 
         
@@ -131,26 +161,35 @@ class config:
 
 class config_cartpole(config):
     def __init__(self, grpo: bool, seed: int, trace_memory: bool):
-        super().__init__(grpo, "CartPole-v1", seed, trace_memory)
+        super().__init__(grpo, CARTPOLE, seed, trace_memory)
         self.max_ep_len = 500
 
 class config_pendulum(config):
     def __init__(self, grpo: bool, seed: int, trace_memory: bool):
-        super().__init__(grpo, "Pendulum-v1", seed, trace_memory)
+        super().__init__(grpo, PENDULUM, seed, trace_memory)
         self.discretized = True
 
 class config_mountaincar(config):
     def __init__(self, grpo: bool, seed: int, trace_memory: bool):
-        super().__init__(grpo, "MountainCar-v0", seed, trace_memory)
+        super().__init__(grpo, MOUNTAINCAR, seed, trace_memory)
 
 class config_cheetah(config):
     def __init__(self, grpo: bool, seed: int, trace_memory: bool):
-        super().__init__(grpo, "HalfCheetahBulletEnv-v4", seed, trace_memory)
+        super().__init__(grpo, CHEETAH, seed, trace_memory)
 
 class config_humanoid(config):
     def __init__(self, grpo: bool, seed: int, trace_memory: bool):
-        super().__init__(grpo, "Humanoid-v3", seed, trace_memory)
-        self.discretized = False
+        super().__init__(grpo, HUMANOID, seed, trace_memory)
+        self.max_ep_len = 1000
+
+class config_swimmer(config):
+    def __init__(self, grpo: bool, seed: int, trace_memory: bool):
+        super().__init__(grpo, SWIMMER, seed, trace_memory)
+        self.max_ep_len = 1000
+
+class config_reacher(config):
+    def __init__(self, grpo: bool, seed: int, trace_memory: bool):
+        super().__init__(grpo, REACHER, seed, trace_memory)
         self.max_ep_len = 1000
 
 def setup_env(env_name: str, grpo: bool, seed: int, trace_memory: bool) -> tuple:
@@ -160,31 +199,37 @@ def setup_env(env_name: str, grpo: bool, seed: int, trace_memory: bool) -> tuple
         env_name: (str) name of the environment
         grpo: (bool) whether to use GRPO or PPO
         seed: (int) random seed for the environment
+        trace_memory: (bool) whether to trace memory usage
+    Returns:
+        config: (config) config object for the environment
+        env: (gym.Env) gym environment
     """
-    if env_name == "CartPole-v1":
+    if env_name == CARTPOLE:
         config = config_cartpole(grpo, seed, trace_memory)
-    elif env_name == "MountainCar-v0":
+    elif env_name == MOUNTAINCAR:
         config = config_mountaincar(grpo, seed, trace_memory)
-    elif env_name == "Pendulum-v1":
+    elif env_name == PENDULUM:
         config = config_pendulum(grpo, seed, trace_memory)
-    elif env_name == "HalfCheetahBulletEnv-v0":
+    elif env_name == CHEETAH:
         config = config_cheetah(grpo, seed, trace_memory)
-    elif env_name == "Humanoid-v3":
+    elif env_name == HUMANOID:
         config = config_humanoid(grpo, seed, trace_memory)
+    elif env_name == SWIMMER:
+        config = config_swimmer(grpo, seed, trace_memory)
+    elif env_name == REACHER:
+        config = config_reacher(grpo, seed, trace_memory)
     else:
         raise ValueError("Unknown environment name: {}".format(env_name))
 
     # create the environment
-    if "Humanoid" in env_name:
+    if HUMANOID in env_name:
         env = gym.make(env_name, terminate_when_unhealthy=False)
     else:
         env = gym.make(env_name)
     env.seed(seed)
 
-    # descretize the action space if needed
-    if env_name == "Pendulum-v1":
-        env = PendulumDiscreteActionWrapper(env)
-    # elif "Humanoid" in env_name:
-    #     env = HumanoidDiscreteActionWrapper(env)
+    # # OPTIONAL: discretize the action space before training the neural policy
+    # if env_name == PENDULUM:
+    #     env = PendulumDiscreteActionWrapper(env)
 
     return config, env
