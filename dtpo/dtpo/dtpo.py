@@ -1,3 +1,5 @@
+import collections
+import random
 import time
 
 from functools import partial
@@ -486,6 +488,7 @@ def learn_tree_structure_with_grad_batch(
     epsilon,
     learn_rate,
     max_nodes,
+    tree = None
 ):
     """
     Learn a new decision tree with one gradient update of PPO
@@ -503,9 +506,14 @@ def learn_tree_structure_with_grad_batch(
     new_logits = curr_logits + learn_rate * gradients
     new_proba = jax.nn.softmax(new_logits, axis=1)
 
-    new_tree = DecisionTreeRegressor(
-        max_depth=max_depth, max_leaf_nodes=max_leaf_nodes, random_state=random_state
-    )
+    if not tree:
+        new_tree = DecisionTreeRegressor(
+            max_depth=max_depth, max_leaf_nodes=max_leaf_nodes, random_state=random_state
+        )
+    else:
+        print("reusing old tree")
+        new_tree = tree
+
     new_tree.fit(observations, new_proba)
 
     new_tree_params = sklearn_tree_to_tree_params(new_tree.tree_, max_nodes)
@@ -520,6 +528,32 @@ def learn_tree_structure_with_grad_batch(
     )
 
     return new_tree_params, loss_after
+
+class ReplayBuffer:
+    def __init__(self, capacity):
+        self.max_size = capacity
+        self.buffer = collections.deque(maxlen=capacity)
+
+    def add_batch(self, experiences):
+        self.buffer.extend(experiences)
+
+    def sample(self, batch_size):
+        assert batch_size <= len(self.buffer), "Not sufficient elements in the buffer to sample a full batch."
+        
+        start_idx = random.randint(0, len(self.buffer) - batch_size)
+        batch = list(self.buffer)[start_idx:start_idx + batch_size]
+        
+        observations, actions, rewards, dones, next_observations = zip(*batch)
+        return (
+            jnp.array(observations),
+            jnp.array(actions),
+            jnp.array(rewards),
+            jnp.array(dones),
+            jnp.array(next_observations),
+        )
+
+    def size(self):
+        return len(self.buffer)
 
 
 class DTPOLearner:
@@ -546,6 +580,9 @@ class DTPOLearner:
         verbose=False,
         logging=True,
         random_state=None,
+        use_same_tree=False,
+        use_replay_buffer=True,
+        replay_buffer_capacity=7500000,
     ):
         self.env = env
         self.rng = rng
@@ -568,8 +605,13 @@ class DTPOLearner:
         self.verbose = verbose
         self.logging = logging
         self.random_state = random_state
+        self.use_same_tree = use_same_tree
 
         self.random_state_ = check_random_state(self.random_state)
+
+        self.use_replay_buffer = use_replay_buffer
+        if self.use_replay_buffer:
+            self.replay_buffer = ReplayBuffer(replay_buffer_capacity)
 
         # Check if the environment has discrete actions and observations
         # with only a single dimension. Gymnax requires calling the action_space
@@ -673,32 +715,60 @@ class DTPOLearner:
         best_iteration = -1
         self.best_params_ = tree_params
 
+        if self.use_same_tree:
+            self.rng, random_state_rng = jax.random.split(self.rng)
+            random_state = jax.random.choice(random_state_rng, 100000).item()
+            tree = DecisionTreeRegressor(
+                max_depth=self.max_depth, max_leaf_nodes=self.max_leaf_nodes, random_state=random_state
+            )
+        else:
+            tree = None
+
         # Main training loop
         for iteration in range(self.max_iterations):
             iteration_rng, self.rng = jax.random.split(self.rng)
 
-            # Collect a batch of experience
-            start_time = time.time()
-            (
-                observations_par,
-                actions_par,
-                rewards_par,
-                done_par,
-                curr_obs,
-                curr_states,
-            ) = self.rolloutmanager.get_batch(
-                self.tree_policy_.apply,
-                tree_params,
-                curr_obs,
-                curr_states,
-                iteration_rng,
-            )
-            runtime = time.time() - start_time
+            # Collect a batch of experience only if the replay buffer isn't full
+            if not self.use_replay_buffer or (self.use_replay_buffer and self.replay_buffer.size() < self.replay_buffer.max_size):
+                start_time = time.time()
+                (
+                    observations_par,
+                    actions_par,
+                    rewards_par,
+                    done_par,
+                    curr_obs,
+                    curr_states,
+                ) = self.rolloutmanager.get_batch(
+                    self.tree_policy_.apply,
+                    tree_params,
+                    curr_obs,
+                    curr_states,
+                    iteration_rng,
+                )
+                runtime = time.time() - start_time
 
-            observations = observations_par.reshape(-1, observations_par.shape[2])
-            actions = actions_par.ravel()
-            rewards = rewards_par.ravel()
-            done = done_par.ravel()
+                observations = observations_par.reshape(-1, observations_par.shape[2])
+                actions = actions_par.ravel()
+                rewards = rewards_par.ravel()
+                done = done_par.ravel()
+
+                if self.use_replay_buffer:
+                    # start = time.time()
+                    print("storing samples into replay buffer")
+                    batch_experiences = [(observations[i], actions[i], rewards[i], done[i], curr_obs[i]) for i in range(len(observations))]
+                    self.replay_buffer.add_batch(batch_experiences)
+                    # end = time.time()
+                    # print("time taken in sec: ", end - start)
+
+            if self.use_replay_buffer:
+                print("sampling from replay buffer")
+                (
+                    observations,
+                    actions,
+                    rewards,
+                    done,
+                    next_observations,
+                ) = self.replay_buffer.sample(self.simulation_steps)
 
             # Print the mean discounted reward
             pred_values = self.value_network_.apply(
@@ -853,6 +923,7 @@ class DTPOLearner:
                     self.ppo_epsilon,
                     lr,
                     max_nodes,
+                    tree=tree
                 )
 
                 if loss_after > best_loss:
@@ -939,3 +1010,18 @@ class DTPOLearner:
             self.env.num_actions,
             prune=True,
         )
+
+    def save_tree_policy(self, filename):
+        """
+        Saves the tree_policy_ attribute of the model to a file.
+
+        Parameters:
+        filename: The file path where the tree_policy_ will be saved.
+        """
+        try:
+            import pickle
+            with open(filename, "wb") as file:
+                pickle.dump(self.discretized_tree_, file)
+            print(f"discretized_tree_ saved successfully to {filename}")
+        except Exception as e:
+            print(f"Error saving tree_policy_: {e}")
