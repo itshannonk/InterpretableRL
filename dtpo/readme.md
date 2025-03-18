@@ -1,3 +1,5 @@
+The following is the original README from the open-source implementation of DTPO.
+
 # DTPO: Optimizing Interpretable Decision Tree Policies for Reinforcement Learning
 
 DTPO is an algorithm that combines the gradient-based Proximal Policy Optimization (PPO) algorithm with non-differentiable decision trees to train interpretable policies. This repository also contains implementations of:
